@@ -1,13 +1,29 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import Waveform from "./components/Waveform";
-import ClaimCard from "./components/ClaimCard";
+import ClaimCard, { VERDICTS } from "./components/ClaimCard";
 import Logo from "./components/Logo";
 import Modal from "./components/Modal";
+import HowItWorks from "./components/marketing/HowItWorks";
+import Anatomy from "./components/marketing/Anatomy";
+import Verdicts from "./components/marketing/Verdicts";
+import WhyLedger from "./components/marketing/WhyLedger";
+import UseCases from "./components/marketing/UseCases";
+import Limits from "./components/marketing/Limits";
+import Faq from "./components/marketing/Faq";
+import CtaBand from "./components/marketing/CtaBand";
+import SiteFooter from "./components/marketing/SiteFooter";
 import type { Verdict } from "@/lib/types";
+import { friendlyError } from "@/lib/errors";
 
 type Status = "idle" | "working" | "done" | "error";
+
+type UiError = {
+  title: string;
+  message: string;
+  detail?: string;
+};
 
 type AnalyzeResult = {
   transcript: string;
@@ -21,66 +37,35 @@ const STATUS_MESSAGES = [
   "Checking the record…",
 ];
 
-const STEPS = [
-  {
-    n: "01",
-    accent: "var(--color-ribbon)",
-    title: "Paste the link",
-    body: "Drop in a talk, a clip, an interview — anything with a spoken track.",
-  },
-  {
-    n: "02",
-    accent: "var(--color-ribbon-2)",
-    title: "Ledger listens",
-    body: "Audio is pulled down and transcribed word for word, no shortcuts.",
-  },
-  {
-    n: "03",
-    accent: "var(--color-ribbon)",
-    title: "Claims get checked",
-    body: "Each checkable statement is weighed against search evidence and stamped.",
-  },
+const NAV = [
+  { label: "How it works", href: "#how-it-works" },
+  { label: "Verdicts", href: "#verdicts" },
+  { label: "Why Ledger", href: "#why-ledger" },
+  { label: "FAQ", href: "#faq" },
 ];
 
-const FAQ = [
-  {
-    q: "What kind of links work?",
-    a: "Anything with a spoken track — talks, interviews, clips. Very long videos may hit a size limit around 20 minutes of audio.",
-  },
-  {
-    q: "What happens to the audio afterward?",
-    a: "It's deleted from the server the moment the check finishes. Nothing is kept.",
-  },
-  {
-    q: "Why do some claims come back \"unverified\"?",
-    a: "When the evidence is thin or mixed, Ledger says so instead of guessing. Unverified is a real verdict, not a cop-out.",
-  },
-  {
-    q: "Does it check opinions or predictions?",
-    a: "No — only statements that are checkable in principle: facts, numbers, events, history. Opinions and predictions get skipped.",
-  },
+const PROMISES = [
+  "No account",
+  "Audio deleted after the check",
+  "Sources on every verdict",
 ];
 
-const FEATURES = [
+const RETURNS = [
   {
-    accent: "var(--color-ribbon)",
-    title: "Any link, not just uploads",
-    body: "Works from a plain URL — no file wrangling before you get an answer.",
+    k: "Transcript",
+    v: "Every word that was said, in order — before any verdict is applied to it.",
   },
   {
-    accent: "var(--color-ribbon-2)",
-    title: "Real transcript, not a summary",
-    body: "See exactly what was said, in order, before any verdict is applied.",
+    k: "Claim list",
+    v: "Checkable statements separated from opinion, quoted exactly as spoken.",
   },
   {
-    accent: "var(--color-ribbon)",
-    title: "Evidence, not vibes",
-    body: "Verdicts cite sources where search evidence is available, so you can check the checker.",
+    k: "Verdict + confidence",
+    v: "True, False, or Unverified, with a number attached instead of a tone.",
   },
   {
-    accent: "var(--color-ribbon-2)",
-    title: "Unverified is a valid answer",
-    body: "Thin or mixed evidence gets marked unverified instead of a confident guess.",
+    k: "Sources",
+    v: "The evidence each verdict leaned on, linked so you can check it yourself.",
   },
 ];
 
@@ -89,8 +74,16 @@ export default function Home() {
   const [status, setStatus] = useState<Status>("idle");
   const [statusIndex, setStatusIndex] = useState(0);
   const [result, setResult] = useState<AnalyzeResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<UiError | null>(null);
   const [emptyDismissed, setEmptyDismissed] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 12);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
 
   useEffect(() => {
     if (status !== "working") return undefined;
@@ -100,9 +93,17 @@ export default function Home() {
     return () => clearInterval(id);
   }, [status]);
 
-  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    if (!url.trim() || status === "working") return;
+  const tally = useMemo(() => {
+    const counts = { true: 0, false: 0, unverified: 0 };
+    for (const c of result?.claims ?? []) {
+      if (c.verdict in counts) counts[c.verdict] += 1;
+    }
+    return counts;
+  }, [result]);
+
+  const analyze = useCallback(async () => {
+    const target = url.trim();
+    if (!target) return;
 
     setStatusIndex(0);
     setStatus("working");
@@ -114,267 +115,361 @@ export default function Home() {
       const res = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ videoUrl: url.trim() }),
+        body: JSON.stringify({ videoUrl: target }),
       });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "Something went wrong opening that link.");
+
+      // A gateway timeout or crash can answer with HTML, so never assume JSON.
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok || !data) {
+        // A server that answers with a bare message still gets translated here,
+        // so raw pipeline output can never become the headline.
+        setError(
+          data?.title && data?.message
+            ? { title: data.title, message: data.message, detail: data.detail }
+            : friendlyError(data?.detail || data?.error || data?.message),
+        );
+        setStatus("error");
+        return;
       }
+
       setResult(data);
       setStatus("done");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong opening that link.");
+    } catch {
+      setError({
+        title: "Couldn't reach Ledger",
+        message:
+          "The request never made it to the server. Check your connection and try again — nothing was lost.",
+      });
       setStatus("error");
     }
+  }, [url]);
+
+  function handleSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (status === "working") return;
+    void analyze();
   }
 
   return (
-    <main className="min-h-screen flex flex-col">
-      <header className="sticky top-0 z-20 bg-paper/85 backdrop-blur border-b border-paper-line">
-        <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
-          <a href="#" className="flex items-center gap-2">
+    <main className="min-h-screen flex flex-col relative z-0">
+      <header
+        className={`sticky top-0 z-30 border-b transition-colors duration-300 ${
+          scrolled
+            ? "bg-paper/80 backdrop-blur-md border-line"
+            : "bg-transparent border-transparent"
+        }`}
+      >
+        <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between gap-6">
+          <a href="#top" className="flex items-center gap-2.5 shrink-0">
             <Logo className="w-7 h-7 shrink-0" />
-            <span className="font-display italic text-xl tracking-tight">Ledger</span>
+            <span className="font-display italic text-xl tracking-tight">
+              Ledger
+            </span>
           </a>
-          <nav className="hidden sm:flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.14em]">
-            <a
-              href="#how-it-works"
-              className="px-4 py-2 rounded-full text-text-paper-dim hover:text-text-paper transition-colors"
-            >
-              How it works
-            </a>
-            <a
-              href="#why-ledger"
-              className="px-4 py-2 rounded-full text-text-paper-dim hover:text-text-paper transition-colors"
-            >
-              Why Ledger
-            </a>
-            <a
-              href="#faq"
-              className="px-4 py-2 rounded-full border border-paper-line hover:border-text-paper transition-colors"
-            >
-              FAQ
-            </a>
+
+          <nav className="hidden md:flex items-center gap-1 font-mono text-[11px] uppercase tracking-[0.14em]">
+            {NAV.map((n) => (
+              <a
+                key={n.href}
+                href={n.href}
+                className="px-3.5 py-2 rounded-full text-dim hover:text-body hover:bg-paper-2 transition-colors"
+              >
+                {n.label}
+              </a>
+            ))}
           </nav>
+
+          <a
+            href="#check"
+            className="btn shrink-0 bg-btn text-btn-fg font-mono text-[11px] uppercase tracking-[0.14em] font-semibold px-5 py-2.5 rounded-full"
+          >
+            Check a link <span className="btn-arrow" aria-hidden="true">→</span>
+          </a>
         </div>
       </header>
 
-      <div className="relative overflow-hidden hero-glow">
-        <div className="max-w-6xl mx-auto px-6 pt-28 pb-20 relative z-10">
-          <div className="max-w-3xl">
-            <p className="font-mono text-xs uppercase tracking-[0.2em] text-ribbon-2 mb-6">
-              Paste a link. Get the receipts.
-            </p>
-            <h1 className="font-black text-5xl md:text-7xl leading-[1.02] tracking-tight mb-7">
-              Find out what they{" "}
-              <span className="gradient-text">actually</span> said — and
-              whether it holds up.
-            </h1>
-            <p className="text-text-paper-dim text-lg max-w-lg mb-10 leading-relaxed">
-              Ledger downloads the audio from a video, transcribes it, and holds
-              each checkable claim up against the record — so you don&apos;t
-              have to take anyone&apos;s word for it.
-            </p>
+      {/* ── Hero ─────────────────────────────────────────────────────── */}
+      <section
+        id="top"
+        className="relative overflow-hidden hero-glow scroll-mt-16 -mt-16 pt-16"
+      >
+        <div className="max-w-6xl mx-auto px-6 pt-16 pb-20 md:pt-24 md:pb-28 relative z-10">
+          <div className="grid lg:grid-cols-[1.15fr_0.85fr] gap-14 lg:gap-20 items-start">
+            <div className="rise">
+              <p className="eyebrow mb-7">Paste a link. Get the receipts.</p>
 
-            <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-3 mb-6">
-              <input
-                type="url"
-                required
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                placeholder="https://… a talk, a clip, an interview"
-                className="flex-1 bg-card border border-paper-line rounded-full px-5 py-3.5 text-sm placeholder:text-text-paper-dim/60 focus:border-ribbon-2 outline-none transition-colors"
-              />
-              <button
-                type="submit"
-                disabled={status === "working"}
-                className="shrink-0 bg-ink text-text-dark font-mono text-xs uppercase tracking-[0.14em] font-semibold px-7 py-3.5 rounded-full transition-all hover:shadow-[0_0_0_4px_color-mix(in_srgb,var(--color-ribbon-2)_35%,transparent)] disabled:opacity-50 disabled:cursor-not-allowed"
+              <h1 className="font-display font-bold text-[2.9rem] sm:text-6xl lg:text-[4.25rem] leading-[1.02] tracking-tight mb-7">
+                Find out what they{" "}
+                <span className="gradient-text">actually</span> said — and
+                whether it holds up.
+              </h1>
+
+              <p className="text-dim text-lg max-w-xl mb-10 leading-relaxed">
+                Ledger pulls the audio from a video, transcribes it word for
+                word, separates the checkable claims from the opinions, and
+                holds each one up against the record — with sources attached, so
+                you never have to take its word for it either.
+              </p>
+
+              <form
+                id="check"
+                onSubmit={handleSubmit}
+                className="scroll-mt-24 flex flex-col sm:flex-row gap-3 mb-5"
               >
-                {status === "working" ? "Working…" : "Open the file →"}
-              </button>
-            </form>
+                <input
+                  type="url"
+                  required
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                  placeholder="https://… a talk, a clip, an interview"
+                  className="flex-1 bg-card border border-line rounded-full px-5 py-4 text-sm placeholder:text-dim/60 focus:border-accent outline-none transition-colors"
+                />
+                <button
+                  type="submit"
+                  disabled={status === "working"}
+                  className={`btn shrink-0 bg-btn text-btn-fg font-mono text-xs uppercase cursor-pointer tracking-[0.14em] font-semibold px-8 py-4 rounded-full disabled:opacity-60 disabled:cursor-not-allowed ${
+                    status === "working" ? "is-working" : ""
+                  }`}
+                >
+                  {status === "working" ? (
+                    "Working…"
+                  ) : (
+                    <>
+                      Open the file{" "}
+                      <span className="btn-arrow" aria-hidden="true">
+                        →
+                      </span>
+                    </>
+                  )}
+                </button>
+              </form>
 
-            <div className="flex items-center gap-4 h-8">
-              <Waveform active={status === "working"} />
-              {status === "working" && (
-                <span className="font-mono text-xs text-text-paper-dim">
-                  {STATUS_MESSAGES[statusIndex]}
+              <div className="flex items-center gap-4 h-9">
+                <Waveform active={status === "working"} />
+                <span className="font-mono text-xs text-dim">
+                  {status === "working"
+                    ? STATUS_MESSAGES[statusIndex]
+                    : "Idle — waiting on a link."}
                 </span>
-              )}
+              </div>
+
+              <ul className="flex flex-wrap gap-x-6 gap-y-2 mt-8 font-mono text-[11px] uppercase tracking-[0.14em] text-dim">
+                {PROMISES.map((p) => (
+                  <li key={p} className="flex items-center gap-2">
+                    <span className="text-accent" aria-hidden="true">
+                      ✓
+                    </span>
+                    {p}
+                  </li>
+                ))}
+              </ul>
             </div>
+
+            {/* What comes back */}
+            <aside className="rise rounded-2xl border border-line bg-card p-8 lg:mt-3">
+              <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-dim mb-6">
+                What comes back
+              </p>
+              <dl className="flex flex-col divide-y divide-line-soft">
+                {RETURNS.map((r, i) => (
+                  <div
+                    key={r.k}
+                    className={i === 0 ? "pb-5" : "py-5 last:pb-0"}
+                  >
+                    <dt className="font-bold text-[0.95rem] mb-1.5 flex items-center gap-2.5">
+                      <span
+                        className="font-mono text-[11px] text-accent"
+                        aria-hidden="true"
+                      >
+                        {String(i + 1).padStart(2, "0")}
+                      </span>
+                      {r.k}
+                    </dt>
+                    <dd className="text-sm text-dim leading-relaxed pl-[2.1rem]">
+                      {r.v}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </aside>
           </div>
         </div>
-      </div>
+      </section>
 
       <div className="w-full flex-1">
         {status === "error" && (
           <Modal onClose={() => setStatus("idle")}>
-            <div className="flex items-start justify-between gap-4 mb-4">
-              <p className="font-mono text-xs uppercase tracking-widest text-false">
-                Couldn&apos;t open that file
+            <div className="flex items-start justify-between gap-4 mb-3">
+              <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-false">
+                Couldn&apos;t finish the check
               </p>
               <button
                 type="button"
                 onClick={() => setStatus("idle")}
                 aria-label="Close"
-                className="shrink-0 -m-1 p-1 text-text-paper-dim hover:text-text-paper transition-colors"
+                className="shrink-0 -m-1 p-1 cursor-pointer text-dim hover:text-body transition-colors"
               >
                 ✕
               </button>
             </div>
-            <p className="text-sm text-text-paper-dim leading-relaxed mb-6">{error}</p>
-            <button
-              type="button"
-              onClick={() => setStatus("idle")}
-              className="w-full bg-ink text-text-dark font-mono text-xs uppercase tracking-[0.14em] font-semibold px-6 py-3 rounded-full hover:opacity-90 transition-opacity"
-            >
-              Close
-            </button>
+
+            <h2 className="font-display font-semibold text-2xl leading-snug mb-3">
+              {error?.title}
+            </h2>
+            <p className="text-sm text-dim leading-relaxed">{error?.message}</p>
+
+            {error?.detail && (
+              <details className="group mt-5 border-t border-line-soft pt-4">
+                <summary className="flex items-center justify-between gap-4 cursor-pointer list-none font-mono text-[11px] uppercase tracking-[0.16em] text-dim hover:text-body transition-colors">
+                  Technical detail
+                  <span
+                    className="text-accent text-base leading-none transition-transform duration-300 group-open:rotate-45"
+                    aria-hidden="true"
+                  >
+                    +
+                  </span>
+                </summary>
+                <p className="mt-3 font-mono text-xs leading-relaxed text-dim break-words">
+                  {error.detail}
+                </p>
+              </details>
+            )}
+
+            <div className="flex flex-col sm:flex-row gap-3 mt-7">
+              <button
+                type="button"
+                onClick={() => void analyze()}
+                className="btn cursor-pointer flex-1 bg-btn text-btn-fg font-mono text-xs uppercase tracking-[0.14em] font-semibold px-6 py-3 rounded-full"
+              >
+                Try again{" "}
+                <span className="btn-arrow" aria-hidden="true">
+                  →
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setStatus("idle")}
+                className="cursor-pointer sm:flex-none border border-line text-dim hover:text-body hover:border-body font-mono text-xs uppercase tracking-[0.14em] font-semibold px-6 py-3 rounded-full transition-colors"
+              >
+                Close
+              </button>
+            </div>
           </Modal>
         )}
 
+        {/* ── Results ───────────────────────────────────────────────── */}
         {status === "done" && result && (
-          <section className="max-w-6xl mx-auto px-6 pb-8">
-            <div className="mb-10">
-              <p className="font-mono text-xs uppercase tracking-[0.2em] text-ribbon-2 mb-3">
-                Transcript
-              </p>
-              <div className="rounded-2xl bg-card border border-paper-line text-text-paper p-6 max-h-72 overflow-y-auto leading-relaxed text-sm whitespace-pre-wrap">
-                {result.transcript}
-              </div>
-            </div>
+          <section className="border-t border-line bg-paper-2 scroll-mt-16">
+            <div className="max-w-6xl mx-auto px-6 py-20">
+              <div className="flex flex-wrap items-end justify-between gap-6 mb-12">
+                <div>
+                  <p className="eyebrow mb-4">The file</p>
+                  <h2 className="font-display font-semibold text-3xl md:text-4xl tracking-tight">
+                    {result.claims.length > 0
+                      ? `${result.claims.length} claim${result.claims.length === 1 ? "" : "s"} checked.`
+                      : "Transcript ready."}
+                  </h2>
+                </div>
 
-            {result.claims.length > 0 && (
-              <div>
-                <p className="font-mono text-xs uppercase tracking-[0.2em] text-ribbon-2 mb-3">
-                  {result.claims.length} claim{result.claims.length === 1 ? "" : "s"} checked
+                {result.claims.length > 0 && (
+                  <div className="flex flex-wrap gap-2.5">
+                    {(
+                      Object.keys(VERDICTS) as Array<keyof typeof VERDICTS>
+                    ).map((k) =>
+                      tally[k] > 0 ? (
+                        <span
+                          key={k}
+                          className="inline-flex items-center gap-2 rounded-full border px-4 py-2 font-mono text-[11px] uppercase tracking-[0.14em]"
+                          style={{
+                            color: VERDICTS[k].color,
+                            borderColor: VERDICTS[k].color,
+                            background: `color-mix(in srgb, ${VERDICTS[k].color} 8%, transparent)`,
+                          }}
+                        >
+                          {VERDICTS[k].label}
+                          <span className="font-semibold">{tally[k]}</span>
+                        </span>
+                      ) : null,
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="mb-14">
+                <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-dim mb-3">
+                  Transcript — every word, in order
                 </p>
-                <div className="grid md:grid-cols-2 gap-5">
-                  {result.claims.map((claim, i) => (
-                    <ClaimCard key={i} {...claim} />
-                  ))}
+                <div className="thin-scroll rounded-2xl bg-card border border-line p-7 max-h-80 overflow-y-auto leading-relaxed text-sm whitespace-pre-wrap">
+                  {result.transcript}
                 </div>
               </div>
-            )}
+
+              {result.claims.length > 0 && (
+                <div>
+                  <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-dim mb-4">
+                    Verdicts
+                  </p>
+                  <div className="grid md:grid-cols-2 gap-5">
+                    {result.claims.map((claim, i) => (
+                      <ClaimCard key={i} index={i} {...claim} />
+                    ))}
+                  </div>
+                  <p className="mt-8 text-xs text-dim leading-relaxed max-w-xl">
+                    Verdicts are automated. Read the transcript and open the
+                    sources before you repeat anything — especially where
+                    confidence is low or the stamp is unverified.
+                  </p>
+                </div>
+              )}
+            </div>
           </section>
         )}
 
-        {status === "done" && result && result.claims.length === 0 && !emptyDismissed && (
-          <Modal onClose={() => setEmptyDismissed(true)}>
-            <div className="flex items-start justify-between gap-4 mb-4">
-              <p className="font-mono text-xs uppercase tracking-widest text-unverified">
-                No checkable claims found
+        {status === "done" &&
+          result &&
+          result.claims.length === 0 &&
+          !emptyDismissed && (
+            <Modal onClose={() => setEmptyDismissed(true)}>
+              <div className="flex items-start justify-between gap-4 mb-4">
+                <p className="font-mono text-xs uppercase tracking-widest text-unverified">
+                  No checkable claims found
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setEmptyDismissed(true)}
+                  aria-label="Close"
+                  className="shrink-0 -m-1 p-1 text-dim hover:text-body transition-colors"
+                >
+                  ✕
+                </button>
+              </div>
+              <p className="text-sm text-dim leading-relaxed mb-6">
+                No clearly checkable factual claims turned up in this one — it
+                may be mostly opinion or narrative. The transcript is still
+                below if you want to read it.
               </p>
               <button
                 type="button"
                 onClick={() => setEmptyDismissed(true)}
-                aria-label="Close"
-                className="shrink-0 -m-1 p-1 text-text-paper-dim hover:text-text-paper transition-colors"
+                className="btn cursor-pointer w-full bg-btn text-btn-fg font-mono text-xs uppercase tracking-[0.14em] font-semibold px-6 py-3 rounded-full"
               >
-                ✕
+                Close
               </button>
-            </div>
-            <p className="text-sm text-text-paper-dim leading-relaxed mb-6">
-              No clearly checkable factual claims turned up in this one — it may be mostly
-              opinion or narrative. The transcript is still below if you want to read it.
-            </p>
-            <button
-              type="button"
-              onClick={() => setEmptyDismissed(true)}
-              className="w-full bg-ink text-text-dark font-mono text-xs uppercase tracking-[0.14em] font-semibold px-6 py-3 rounded-full hover:opacity-90 transition-opacity"
-            >
-              Close
-            </button>
-          </Modal>
-        )}
+            </Modal>
+          )}
 
-        <section id="how-it-works" className="bg-card border-y border-paper-line scroll-mt-16">
-          <div className="max-w-6xl mx-auto px-6 py-28">
-            <p className="font-mono text-xs uppercase tracking-[0.2em] text-ribbon-2 mb-3">
-              How it works
-            </p>
-            <h2 className="font-black text-3xl md:text-4xl tracking-tight mb-14 max-w-md">
-              Three steps, no manual fact-checking required.
-            </h2>
-            <div className="grid sm:grid-cols-3 gap-6">
-              {STEPS.map((step) => (
-                <div
-                  key={step.n}
-                  className="rounded-2xl border border-paper-line bg-paper p-6 border-l-4"
-                  style={{ borderLeftColor: step.accent }}
-                >
-                  <span className="font-mono text-xs" style={{ color: step.accent }}>
-                    {step.n}
-                  </span>
-                  <h3 className="font-bold text-lg mt-3 mb-2">{step.title}</h3>
-                  <p className="text-sm text-text-paper-dim leading-relaxed">{step.body}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        <section id="why-ledger" className="scroll-mt-16">
-          <div className="max-w-6xl mx-auto px-6 py-28">
-            <p className="font-mono text-xs uppercase tracking-[0.2em] text-ribbon-2 mb-3">
-              Why Ledger
-            </p>
-            <h2 className="font-black text-3xl md:text-4xl tracking-tight mb-14 max-w-md">
-              Built to show its work, not just its opinion.
-            </h2>
-            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-10">
-              {FEATURES.map((f) => (
-                <div key={f.title}>
-                  <span
-                    className="stamp shrink-0 text-[10px]! px-2! py-1!"
-                    style={{ color: f.accent }}
-                  >
-                    ✓
-                  </span>
-                  <h3 className="font-bold text-lg mt-3 mb-1.5">{f.title}</h3>
-                  <p className="text-sm text-text-paper-dim leading-relaxed">{f.body}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        <section id="faq" className="bg-card border-y border-paper-line scroll-mt-16">
-          <div className="max-w-4xl mx-auto px-6 py-28">
-            <p className="font-mono text-xs uppercase tracking-[0.2em] text-ribbon-2 mb-3">FAQ</p>
-            <h2 className="font-black text-3xl md:text-4xl tracking-tight mb-12 max-w-md">
-              Questions worth answering up front.
-            </h2>
-            <div className="flex flex-col divide-y divide-paper-line border-t border-paper-line">
-              {FAQ.map((item) => (
-                <details key={item.q} className="group py-5">
-                  <summary className="flex items-center justify-between gap-4 cursor-pointer list-none font-bold text-lg">
-                    {item.q}
-                    <span className="font-mono text-ribbon-2 text-lg shrink-0 transition-transform group-open:rotate-45">
-                      +
-                    </span>
-                  </summary>
-                  <p className="mt-3 text-sm text-text-paper-dim leading-relaxed max-w-xl">
-                    {item.a}
-                  </p>
-                </details>
-              ))}
-            </div>
-          </div>
-        </section>
+        <HowItWorks />
+        <Anatomy />
+        <Verdicts />
+        <WhyLedger />
+        <UseCases />
+        <Limits />
+        <Faq />
+        <CtaBand />
       </div>
 
-      <footer className="mt-auto border-t border-paper-line">
-        <div className="max-w-6xl mx-auto px-6 py-10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <span className="flex items-center gap-2">
-            <Logo className="w-5 h-5 shrink-0" />
-            <span className="font-display italic text-lg tracking-tight">Ledger</span>
-          </span>
-          <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-text-paper-dim">
-            Built for people tired of taking someone&apos;s word for it.
-          </p>
-        </div>
-      </footer>
+      <SiteFooter />
     </main>
   );
 }

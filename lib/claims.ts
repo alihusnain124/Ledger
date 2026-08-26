@@ -2,7 +2,7 @@ import type { ChatMessage } from "./types";
 
 // OpenRouter's free model roster shifts over time — check
 // https://openrouter.ai/models?max_price=0 and override via env if needed.
-const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || "nvidia/nemotron-3-nano-30b-a3b:free";
+const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || "google/gemma-4-26b-a4b-it:free";
 
 export async function callOpenRouter(
   messages: ChatMessage[],

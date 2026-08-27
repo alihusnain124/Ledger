@@ -11,6 +11,8 @@ async function searchTavily(query: string): Promise<Evidence[] | null> {
     const res = await fetch("https://api.tavily.com/search", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      // Evidence is optional — a slow search shouldn't hold up the verdict.
+      signal: AbortSignal.timeout(12_000),
       body: JSON.stringify({
         api_key: apiKey,
         query,

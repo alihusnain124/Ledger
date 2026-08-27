@@ -17,10 +17,15 @@ export async function transcribeAudio(filePath: string): Promise<string> {
   form.append("model", GROQ_MODEL);
   form.append("response_format", "json");
 
+  // Transcription is the long pole, but it still needs a ceiling — otherwise a
+  // stalled upload leaves the browser spinning with nothing to show.
   const res = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}` },
+    signal: AbortSignal.timeout(180_000),
     body: form,
+  }).catch(() => {
+    throw new Error("Transcription timed out before the service answered.");
   });
 
   if (!res.ok) {

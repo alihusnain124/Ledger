@@ -1,8 +1,38 @@
 import type { ChatMessage } from "./types";
 
-// OpenRouter's free model roster shifts over time — check
-// https://openrouter.ai/models?max_price=0 and override via env if needed.
-const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || "google/gemma-4-26b-a4b-it:free";
+// OpenRouter's free roster shifts, and any single free model can be rate-limited
+// upstream at any moment (the free pool is shared across everyone). So we keep a
+// list and walk down it instead of failing on the first busy model. Check
+// https://openrouter.ai/models?max_price=0 when these drift.
+const DEFAULT_MODELS = [
+  "nvidia/nemotron-3-super-120b-a12b:free",
+  "nvidia/nemotron-3.5-lightning:free",
+  "google/gemma-4-26b-a4b-it:free",
+  "google/gemma-4-31b-it:free",
+  "minimax/minimax-m3:free",
+  "z-ai/glm-5.2:free",
+];
+
+// One model call should never outlast a user's patience — and without this a
+// stalled provider hangs the whole request forever.
+const REQUEST_TIMEOUT_MS = 60_000;
+const MAX_TOKENS = 2_000;
+
+// Statuses that mean "this model, right now" — worth trying the next one.
+const SKIP_STATUSES = new Set([402, 403, 404, 408, 429, 502, 503, 504]);
+
+// The model that answered last sticks around, so one busy model isn't re-tried
+// on every call within the same request.
+let preferredModel: string | null = null;
+
+function modelCandidates(): string[] {
+  const configured = (process.env.OPENROUTER_MODELS || process.env.OPENROUTER_MODEL || "")
+    .split(",")
+    .map((m) => m.trim())
+    .filter(Boolean);
+
+  return [...new Set([...(preferredModel ? [preferredModel] : []), ...configured, ...DEFAULT_MODELS])];
+}
 
 export async function callOpenRouter(
   messages: ChatMessage[],
@@ -15,43 +45,108 @@ export async function callOpenRouter(
     );
   }
 
-  const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: OPENROUTER_MODEL,
-      messages,
-      temperature: 0.2,
-      ...(json ? { response_format: { type: "json_object" } } : {}),
-    }),
-  });
+  const candidates = modelCandidates();
+  let lastStatus = 0;
+  let lastBody = "";
 
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`Model request failed (${res.status}): ${text.slice(0, 300)}`);
+  for (const model of candidates) {
+    // Some free models reject response_format outright — retry that one plainly.
+    for (const useJsonMode of json ? [true, false] : [false]) {
+      let res: Response;
+
+      try {
+        res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+          body: JSON.stringify({
+            model,
+            messages,
+            temperature: 0.2,
+            max_tokens: MAX_TOKENS,
+            // Several of the free models are reasoning models: left on, they
+            // spend a minute narrating before the JSON. Off, they answer in
+            // seconds with the same answer.
+            reasoning: { enabled: false },
+            ...(useJsonMode ? { response_format: { type: "json_object" } } : {}),
+          }),
+        });
+      } catch {
+        lastStatus = 408;
+        lastBody = `${model} timed out`;
+        break; // next model
+      }
+
+      if (res.ok) {
+        const data = await res.json();
+        const content = data.choices?.[0]?.message?.content;
+        if (content) {
+          if (preferredModel !== model) console.info(`[ledger] model: ${model}`);
+          preferredModel = model;
+          return content;
+        }
+        lastStatus = 200;
+        lastBody = "empty response";
+        break; // empty answer — a different model may do better
+      }
+
+      lastStatus = res.status;
+      lastBody = (await res.text().catch(() => "")).slice(0, 200);
+
+      // A bad key or malformed request won't improve on another model.
+      if (res.status === 401 || res.status === 400) {
+        if (res.status === 400 && useJsonMode) continue; // drop json mode, retry
+        throw new Error(`Model request failed (${res.status}): ${lastBody}`);
+      }
+
+      if (SKIP_STATUSES.has(res.status)) break; // next model
+    }
   }
 
-  const data = await res.json();
-  const content = data.choices?.[0]?.message?.content;
-  if (!content) throw new Error("The model returned an empty response.");
-  return content;
+  throw new Error(
+    `Model request failed (${lastStatus || 429}): every free model Ledger tried was unavailable. ${lastBody}`,
+  );
 }
 
 export function extractJson(text: string): unknown {
+  // Reasoning models like to narrate before answering, so strip the thinking
+  // block and any fenced wrapper before looking for the object itself.
+  const cleaned = text
+    .replace(/<think>[\s\S]*?<\/think>/gi, "")
+    .replace(/```(?:json)?/gi, "")
+    .trim();
+
   try {
-    return JSON.parse(text);
+    return JSON.parse(cleaned);
   } catch {
-    const match = text.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
-    if (match) {
-      try {
-        return JSON.parse(match[0]);
-      } catch {
-        // fall through to the throw below
+    // Walk from each opening brace and take the first balanced span that parses.
+    for (const open of ["{", "["] as const) {
+      const close = open === "{" ? "}" : "]";
+      let start = cleaned.indexOf(open);
+
+      while (start !== -1) {
+        let depth = 0;
+
+        for (let i = start; i < cleaned.length; i++) {
+          if (cleaned[i] === open) depth++;
+          else if (cleaned[i] === close) depth--;
+
+          if (depth === 0) {
+            try {
+              return JSON.parse(cleaned.slice(start, i + 1));
+            } catch {
+              break; // this span isn't valid JSON — try the next opening brace
+            }
+          }
+        }
+
+        start = cleaned.indexOf(open, start + 1);
       }
     }
+
     throw new Error("Couldn't parse the model's response as JSON.");
   }
 }

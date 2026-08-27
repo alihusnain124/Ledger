@@ -319,23 +319,6 @@ export default function Home() {
             </h2>
             <p className="text-sm text-dim leading-relaxed">{error?.message}</p>
 
-            {error?.detail && (
-              <details className="group mt-5 border-t border-line-soft pt-4">
-                <summary className="flex items-center justify-between gap-4 cursor-pointer list-none font-mono text-[11px] uppercase tracking-[0.16em] text-dim hover:text-body transition-colors">
-                  Technical detail
-                  <span
-                    className="text-accent text-base leading-none transition-transform duration-300 group-open:rotate-45"
-                    aria-hidden="true"
-                  >
-                    +
-                  </span>
-                </summary>
-                <p className="mt-3 font-mono text-xs leading-relaxed text-dim break-words">
-                  {error.detail}
-                </p>
-              </details>
-            )}
-
             <div className="flex flex-col sm:flex-row gap-3 mt-7">
               <button
                 type="button"

@@ -10,7 +10,12 @@ function run(cmd: string, args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
     // spawn() with an args array (no shell) avoids command-injection risk
     // from a user-supplied URL — never build this as a shell string.
-    const child = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"] });
+    // Without a timeout a wedged yt-dlp keeps the request open indefinitely.
+    const child = spawn(cmd, args, {
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout: 240_000,
+      killSignal: "SIGKILL",
+    });
     let stderr = "";
     child.stderr.on("data", (d) => (stderr += d.toString()));
     child.on("error", (err) => {

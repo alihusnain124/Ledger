@@ -67,6 +67,12 @@ const RULES: Array<{ match: RegExp; title: string; message: string }> = [
       "The audio came through, but there were no spoken words to transcribe — music-only or silent clips end up here.",
   },
   {
+    match: /every free model|free model .*unavailable/i,
+    title: "The free models are all busy",
+    message:
+      "Ledger tried every free model it can reach and each one was rate-limited — that's the shared free pool, not your link. Wait a few minutes and run it again, or add your own provider key at openrouter.ai/settings/integrations for steadier limits.",
+  },
+  {
     match:
       /Transcription failed \((429|5\d\d)\)|rate.?limit|quota|too many requests/i,
     title: "The service is busy",

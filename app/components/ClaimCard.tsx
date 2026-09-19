@@ -17,7 +17,7 @@ export const VERDICTS: Record<
   unverified: {
     label: "Unverified",
     color: "var(--unverified)",
-    blurb: "The evidence is thin, mixed, or missing — so no verdict is forced.",
+    blurb: "The evidence is thin, mixed, or missing, so no verdict is forced.",
   },
 };
 

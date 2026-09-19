@@ -5,7 +5,7 @@ const CARDS = [
     label: "True",
     color: "var(--true)",
     line: "The evidence backs it.",
-    body: "Sources agree with the claim as it was actually stated — not with a friendlier version of it.",
+    body: "Sources agree with the claim as it was actually stated, not with a friendlier version of it.",
     note: "Wording matters. A rounded-up number is checked as the number that was said.",
   },
   {
@@ -30,7 +30,7 @@ export default function Verdicts() {
       <div className="max-w-6xl mx-auto px-6 py-24 md:py-32">
         <SectionHead
           eyebrow="Three verdicts"
-          title="Only three stamps — and one of them admits doubt."
+          title="Only three stamps, and one of them admits doubt."
           lead="A fact-checker that always has an answer isn't a fact-checker. Ledger keeps a third stamp for the claims the record genuinely doesn't settle."
         />
 

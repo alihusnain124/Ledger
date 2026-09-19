@@ -44,6 +44,15 @@ const NAV = [
   { label: "FAQ", href: "#faq" },
 ];
 
+const SECTION_IDS = [
+  "how-it-works",
+  "verdicts",
+  "why-ledger",
+  "use-cases",
+  "limits",
+  "faq",
+];
+
 const PROMISES = [
   "No account",
   "Audio deleted after the check",
@@ -53,7 +62,7 @@ const PROMISES = [
 const RETURNS = [
   {
     k: "Transcript",
-    v: "Every word that was said, in order — before any verdict is applied to it.",
+    v: "Every word that was said, in order, before any verdict is applied to it.",
   },
   {
     k: "Claim list",
@@ -83,6 +92,65 @@ export default function Home() {
     onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  useEffect(() => {
+    const sections = SECTION_IDS.map((id) => document.getElementById(id)).filter(
+      (el): el is HTMLElement => el !== null,
+    );
+    if (sections.length === 0) return undefined;
+
+    let frame = 0;
+    let held = Boolean(window.location.hash);
+    let release = window.setTimeout(() => {
+      held = false;
+    }, 700);
+
+    const holdUntilScrollStops = () => {
+      window.clearTimeout(release);
+      release = window.setTimeout(() => {
+        held = false;
+      }, 150);
+    };
+
+    const sync = () => {
+      frame = 0;
+      let current = "";
+      for (const el of sections) {
+        if (el.getBoundingClientRect().top <= 80) current = el.id;
+      }
+
+      const next = current ? `#${current}` : "";
+      if (next !== window.location.hash) {
+        const { pathname, search } = window.location;
+        history.replaceState(null, "", next || `${pathname}${search}`);
+      }
+    };
+
+    const onScroll = () => {
+      if (held) {
+        holdUntilScrollStops();
+        return;
+      }
+      if (frame) return;
+      frame = requestAnimationFrame(sync);
+    };
+
+    const onClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target?.closest?.('a[href^="#"]')) return;
+      held = true;
+      holdUntilScrollStops();
+    };
+
+    window.addEventListener("scroll", onScroll, { passive: true });
+    document.addEventListener("click", onClick);
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      document.removeEventListener("click", onClick);
+      window.clearTimeout(release);
+      if (frame) cancelAnimationFrame(frame);
+    };
   }, []);
 
   useEffect(() => {
@@ -118,12 +186,9 @@ export default function Home() {
         body: JSON.stringify({ videoUrl: target }),
       });
 
-      // A gateway timeout or crash can answer with HTML, so never assume JSON.
       const data = await res.json().catch(() => null);
 
       if (!res.ok || !data) {
-        // A server that answers with a bare message still gets translated here,
-        // so raw pipeline output can never become the headline.
         setError(
           data?.title && data?.message
             ? { title: data.title, message: data.message, detail: data.detail }
@@ -139,7 +204,7 @@ export default function Home() {
       setError({
         title: "Couldn't reach Ledger",
         message:
-          "The request never made it to the server. Check your connection and try again — nothing was lost.",
+          "The request never made it to the server. Check your connection and try again. Nothing was lost.",
       });
       setStatus("error");
     }
@@ -189,7 +254,6 @@ export default function Home() {
         </div>
       </header>
 
-      {/* ── Hero ─────────────────────────────────────────────────────── */}
       <section
         id="top"
         className="relative overflow-hidden hero-glow scroll-mt-16 -mt-16 pt-16"
@@ -201,14 +265,14 @@ export default function Home() {
 
               <h1 className="font-display font-bold text-[2.9rem] sm:text-6xl lg:text-[4.25rem] leading-[1.02] tracking-tight mb-7">
                 Find out what they{" "}
-                <span className="gradient-text">actually</span> said — and
+                <span className="gradient-text">actually</span> said, and
                 whether it holds up.
               </h1>
 
               <p className="text-dim text-lg max-w-xl mb-10 leading-relaxed">
                 Ledger pulls the audio from a video, transcribes it word for
                 word, separates the checkable claims from the opinions, and
-                holds each one up against the record — with sources attached, so
+                holds each one up against the record, with sources attached, so
                 you never have to take its word for it either.
               </p>
 
@@ -250,7 +314,7 @@ export default function Home() {
                 <span className="font-mono text-xs text-dim">
                   {status === "working"
                     ? STATUS_MESSAGES[statusIndex]
-                    : "Idle — waiting on a link."}
+                    : "Idle. Waiting on a link."}
                 </span>
               </div>
 
@@ -266,7 +330,6 @@ export default function Home() {
               </ul>
             </div>
 
-            {/* What comes back */}
             <aside className="rise rounded-2xl border border-line bg-card p-8 lg:mt-3">
               <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-dim mb-6">
                 What comes back
@@ -341,7 +404,6 @@ export default function Home() {
           </Modal>
         )}
 
-        {/* ── Results ───────────────────────────────────────────────── */}
         {status === "done" && result && (
           <section className="border-t border-line bg-paper-2 scroll-mt-16">
             <div className="max-w-6xl mx-auto px-6 py-20">
@@ -381,7 +443,7 @@ export default function Home() {
 
               <div className="mb-14">
                 <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-dim mb-3">
-                  Transcript — every word, in order
+                  Transcript: every word, in order
                 </p>
                 <div className="thin-scroll rounded-2xl bg-card border border-line p-7 max-h-80 overflow-y-auto leading-relaxed text-sm whitespace-pre-wrap">
                   {result.transcript}
@@ -400,7 +462,7 @@ export default function Home() {
                   </div>
                   <p className="mt-8 text-xs text-dim leading-relaxed max-w-xl">
                     Verdicts are automated. Read the transcript and open the
-                    sources before you repeat anything — especially where
+                    sources before you repeat anything, especially where
                     confidence is low or the stamp is unverified.
                   </p>
                 </div>
@@ -428,7 +490,7 @@ export default function Home() {
                 </button>
               </div>
               <p className="text-sm text-dim leading-relaxed mb-6">
-                No clearly checkable factual claims turned up in this one — it
+                No clearly checkable factual claims turned up in this one. It
                 may be mostly opinion or narrative. The transcript is still
                 below if you want to read it.
               </p>

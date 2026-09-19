@@ -4,14 +4,14 @@ const STEPS = [
   {
     n: "01",
     title: "You paste a link",
-    body: "A talk, a clip, an interview, a podcast episode — anything with a spoken track and a public URL.",
+    body: "A talk, a clip, an interview, a podcast episode: anything with a spoken track and a public URL.",
     detail: "No sign-up, no upload, no file wrangling.",
   },
   {
     n: "02",
     title: "The audio comes down",
     body: "Ledger pulls just the audio track and compresses it to a size a transcription model will accept.",
-    detail: "Video is never stored — only the audio, and only until the check ends.",
+    detail: "Video is never stored, only the audio, and only until the check ends.",
   },
   {
     n: "03",
@@ -39,7 +39,7 @@ export default function HowItWorks() {
               <span className="gradient-text">a straight answer.</span>
             </>
           }
-          lead="Nothing here is a black box. Each stage hands you something you can inspect — the audio it found, the words it heard, the claims it isolated, the evidence it weighed."
+          lead="Nothing here is a black box. Each stage hands you something you can inspect: the audio it found, the words it heard, the claims it isolated, the evidence it weighed."
         />
 
         <ol className="mt-16 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">

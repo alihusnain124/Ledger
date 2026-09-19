@@ -6,7 +6,6 @@ import { verifyClaims } from "@/lib/verify";
 import { friendlyError } from "@/lib/errors";
 
 export const runtime = "nodejs";
-// Give the pipeline room to breathe on platforms that respect this (e.g. Vercel Pro).
 export const maxDuration = 300;
 
 export async function POST(req: NextRequest) {
@@ -33,7 +32,7 @@ export async function POST(req: NextRequest) {
           error: "That doesn't look like a valid URL.",
           title: "That isn't a link Ledger can open",
           message:
-            "It needs a full web address — something starting with http:// or https:// that points at a page with a video on it.",
+            "It needs a full web address, something starting with http:// or https:// that points at a page with a video on it.",
         },
         { status: 400 },
       );
@@ -48,7 +47,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ transcript, claims: verdicts });
   } catch (err) {
-    // Full detail stays in the server log; the client gets the readable version.
     console.error(err);
     const friendly = friendlyError(err);
     return NextResponse.json({ error: friendly.message, ...friendly }, { status: 500 });

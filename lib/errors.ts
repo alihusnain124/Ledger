@@ -4,25 +4,21 @@ export type FriendlyError = {
   detail?: string;
 };
 
-const RULES: Array<{ match: RegExp; title: string; message: string }> = [
-  {
-    match: /(API_KEY|api key) is not set|Missing .*key/i,
-    title: "Ledger isn't fully set up",
-    message:
-      "A key the server needs is missing, so the check never started. Nothing is wrong with your link — whoever runs this instance has to add the key.",
-  },
-  {
-    match: /Couldn't run "(yt-dlp|ffmpeg)"/i,
-    title: "A tool is missing on the server",
-    message:
-      "The program Ledger uses to pull audio out of a video isn't installed where the app runs, so it couldn't get past the first step.",
-  },
-  {
-    match: /No supported JavaScript runtime|js-runtimes|EJS/i,
-    title: "The server can't open YouTube links yet",
-    message:
-      "YouTube now needs a JavaScript runtime on the server to hand over the audio, and this machine doesn't have one installed. Links from other sites still work; installing Deno where the app runs fixes YouTube.",
-  },
+const UNAVAILABLE: FriendlyError = {
+  title: "Ledger can't run checks right now",
+  message:
+    "Something on our side isn't responding, so the check couldn't go through. Sorry for the trouble. Please try again a little later.",
+};
+
+const RULES: Array<{
+  match: RegExp;
+  title?: string;
+  message?: string;
+  internal?: boolean;
+}> = [
+  { match: /(API_KEY|api key) is not set|Missing .*key/i, internal: true },
+  { match: /Couldn't run "(yt-dlp|ffmpeg)"/i, internal: true },
+  { match: /No supported JavaScript runtime|js-runtimes|EJS/i, internal: true },
   {
     match: /Sign in to confirm|not a bot|confirm your age|cookies/i,
     title: "The video host blocked the download",
@@ -39,7 +35,7 @@ const RULES: Array<{ match: RegExp; title: string; message: string }> = [
     match: /HTTP Error 403|Forbidden/i,
     title: "The video host refused the download",
     message:
-      "The site turned the request away before any audio came across. This often clears on its own — try again shortly, or use a different link.",
+      "The site turned the request away before any audio came across. This often clears on its own. Try again shortly, or use a different link.",
   },
   {
     match: /is live|live stream|premiere/i,
@@ -64,13 +60,13 @@ const RULES: Array<{ match: RegExp; title: string; message: string }> = [
     match: /empty transcript|no speech/i,
     title: "No speech in that one",
     message:
-      "The audio came through, but there were no spoken words to transcribe — music-only or silent clips end up here.",
+      "The audio came through, but there were no spoken words to transcribe. Music-only or silent clips end up here.",
   },
   {
     match: /every free model|free model .*unavailable/i,
     title: "The free models are all busy",
     message:
-      "Ledger tried every free model it can reach and each one was rate-limited — that's the shared free pool, not your link. Wait a few minutes and run it again, or add your own provider key at openrouter.ai/settings/integrations for steadier limits.",
+      "Ledger tried every free model it can reach and each one was rate-limited. That's the shared free pool, not your link. Wait a few minutes and run it again, or add your own provider key at openrouter.ai/settings/integrations for steadier limits.",
   },
   {
     match:
@@ -97,7 +93,7 @@ const RULES: Array<{ match: RegExp; title: string; message: string }> = [
       /fetch failed|ENOTFOUND|ECONNREFUSED|ETIMEDOUT|network|socket hang up/i,
     title: "Couldn't reach an outside service",
     message:
-      "The server lost its connection partway through the check. This is almost always temporary — try again in a moment.",
+      "The server lost its connection partway through the check. This is almost always temporary. Try again in a moment.",
   },
   {
     match: /timed? ?out|aborted/i,
@@ -118,7 +114,8 @@ export function friendlyError(raw: unknown): FriendlyError {
   if (detail) {
     for (const rule of RULES) {
       if (rule.match.test(detail)) {
-        return { title: rule.title, message: rule.message, detail };
+        if (rule.internal) return { ...UNAVAILABLE };
+        return { title: rule.title!, message: rule.message!, detail };
       }
     }
   }
@@ -126,7 +123,7 @@ export function friendlyError(raw: unknown): FriendlyError {
   return {
     title: "Something went wrong on our side",
     message:
-      "The check stopped partway through for a reason Ledger couldn't identify. Try the same link again — if it keeps failing, the clip is probably the problem.",
+      "The check stopped partway through for a reason Ledger couldn't identify. Try the same link again. If it keeps failing, the clip is probably the problem.",
     detail,
   };
 }

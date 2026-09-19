@@ -32,7 +32,7 @@ export default function SiteFooter() {
             </span>
             <p className="mt-5 text-sm text-dim leading-relaxed">
               Paste a video link. Read what was actually said. See which claims
-              survive contact with the record — and which ones the record can&apos;t
+              survive contact with the record, and which ones the record can&apos;t
               settle.
             </p>
           </div>

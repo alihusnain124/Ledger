@@ -1,7 +1,7 @@
 const LIMITS = [
   {
     title: "It isn't a court ruling",
-    body: "Treat a verdict as a strong starting point with its sources attached — the kind of lead a researcher would chase, not the end of the argument.",
+    body: "Treat a verdict as a strong starting point with its sources attached: the kind of lead a researcher would chase, not the end of the argument.",
   },
   {
     title: "It won't grade opinions",
@@ -9,7 +9,7 @@ const LIMITS = [
   },
   {
     title: "Long videos hit a ceiling",
-    body: "Audio is capped before transcription — roughly 20–30 minutes of speech. Longer clips need to be trimmed first.",
+    body: "Audio is capped before transcription, roughly 20–30 minutes of speech. Longer clips need to be trimmed first.",
   },
   {
     title: "Context can still mislead",
@@ -37,10 +37,7 @@ export default function Limits() {
           <div className="grid sm:grid-cols-2 gap-x-8 gap-y-9">
             {LIMITS.map((l) => (
               <div key={l.title}>
-                <span className="font-mono text-accent-2 text-sm" aria-hidden="true">
-                  —
-                </span>
-                <h3 className="font-bold text-lg mt-2 mb-2">{l.title}</h3>
+                <h3 className="font-bold text-lg mb-2">{l.title}</h3>
                 <p className="text-sm text-on-ink-dim leading-relaxed">{l.body}</p>
               </div>
             ))}

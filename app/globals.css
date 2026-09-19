@@ -30,7 +30,7 @@
 
   --grain: 0.03;
 
-  /* Primary button — inverts with the theme so it always reads as the
+  /* Primary button: inverts with the theme so it always reads as the
      strongest surface on the page */
   --btn: #101410;
   --btn-fg: #f4f2e9;
@@ -119,7 +119,7 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Paper grain over the whole page — no image request, no layout cost */
+/* Paper grain over the whole page: no image request, no layout cost */
 body::after {
   content: "";
   position: fixed;
@@ -161,14 +161,6 @@ body::after {
     display: inline-flex;
     align-items: center;
     gap: 0.6em;
-  }
-
-  .eyebrow::before {
-    content: "";
-    width: 1.6rem;
-    height: 1px;
-    background: currentColor;
-    opacity: 0.55;
   }
 
   /* Underlined-on-hover editorial link */
@@ -244,7 +236,7 @@ body::after {
 
   /* ── Surfaces ────────────────────────────────────────────────────────── */
 
-  /* Hero ground: low emerald light plus a hairline grid — no blur wash */
+  /* Hero ground: low emerald light plus a hairline grid, no blur wash */
   .hero-glow::before {
     content: "";
     position: absolute;

@@ -3,14 +3,10 @@ import { mkdtemp, stat, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-// Stay comfortably under typical hosted Whisper upload limits (~25MB).
 const MAX_BYTES = 24 * 1024 * 1024;
 
 function run(cmd: string, args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
-    // spawn() with an args array (no shell) avoids command-injection risk
-    // from a user-supplied URL — never build this as a shell string.
-    // Without a timeout a wedged yt-dlp keeps the request open indefinitely.
     const child = spawn(cmd, args, {
       stdio: ["ignore", "pipe", "pipe"],
       timeout: 240_000,
@@ -77,7 +73,7 @@ export async function downloadAudio(
   if (info.size > MAX_BYTES) {
     await cleanup(dir);
     throw new Error(
-      "That clip's audio is too large to transcribe on the free tier — try something under ~20 minutes."
+      "That clip's audio is too large to transcribe on the free tier. Try something under ~20 minutes."
     );
   }
 

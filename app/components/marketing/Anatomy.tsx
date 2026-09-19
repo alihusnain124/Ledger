@@ -15,7 +15,7 @@ const CALLOUTS = [
   },
   {
     k: "The reasoning",
-    v: "What the evidence actually said, in plain language — including where it disagreed with itself.",
+    v: "What the evidence actually said, in plain language, including where it disagreed with itself.",
   },
   {
     k: "The sources",
@@ -30,11 +30,10 @@ export default function Anatomy() {
         <SectionHead
           eyebrow="Anatomy of a verdict"
           title="Every claim comes back with its receipts attached."
-          lead="This is the shape of what you get back — one card per checkable statement, built so you can disagree with it on the evidence."
+          lead="This is the shape of what you get back: one card per checkable statement, built so you can disagree with it on the evidence."
         />
 
         <div className="mt-16 grid lg:grid-cols-[1.05fr_1fr] gap-12 lg:gap-16 items-start">
-          {/* Illustrative card — not a live result */}
           <div className="relative">
             <span className="absolute -top-3 left-6 z-10 font-mono text-[10px] uppercase tracking-[0.18em] bg-accent text-paper px-2.5 py-1 rounded-full">
               Illustration
@@ -98,7 +97,7 @@ export default function Anatomy() {
               </div>
             </article>
             <p className="mt-4 text-xs text-dim leading-relaxed">
-              Example card with placeholder text — it shows the layout, not a real
+              Example card with placeholder text. It shows the layout, not a real
               fact-check.
             </p>
           </div>

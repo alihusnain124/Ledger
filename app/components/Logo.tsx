@@ -1,8 +1,3 @@
-/**
- * Ledger mark: a ruled ledger page with a verification seal pressed onto the
- * corner. Page fill uses the body color and the rules use the page color, so
- * the mark stays legible in both light and dark.
- */
 export default function Logo({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 32 32" fill="none" className={className} aria-hidden="true">

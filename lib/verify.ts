@@ -11,7 +11,6 @@ async function searchTavily(query: string): Promise<Evidence[] | null> {
     const res = await fetch("https://api.tavily.com/search", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      // Evidence is optional — a slow search shouldn't hold up the verdict.
       signal: AbortSignal.timeout(12_000),
       body: JSON.stringify({
         api_key: apiKey,
@@ -51,7 +50,7 @@ export async function verifyClaims(claims: string[]): Promise<Verdict[]> {
       const evidenceText =
         evidence && evidence.length
           ? evidence
-              .map((e, j) => `  [${j}] ${e.title} — ${e.snippet} (${e.url})`)
+              .map((e, j) => `  [${j}] ${e.title}: ${e.snippet} (${e.url})`)
               .join("\n")
           : "  (no search evidence available)";
       return `${i + 1}. Claim: ${c}\n${evidenceText}`;
@@ -59,8 +58,8 @@ export async function verifyClaims(claims: string[]): Promise<Verdict[]> {
     .join("\n\n");
 
   const systemPrompt = hasSearch
-    ? 'You are a careful fact-checker. For each numbered claim, use the search evidence given under it to decide a verdict. Respond ONLY with JSON: {"verdicts": [{"index": 1, "verdict": "true"|"false"|"unverified", "confidence": 0-100, "explanation": "one or two plain sentences", "sourceIndexes": [0,1]}]}. Use "unverified" when the evidence is thin, mixed, or doesn\'t clearly settle it — never guess. sourceIndexes refers to the bracketed evidence numbers you actually relied on for that claim.'
-    : 'You are a careful fact-checker working from general knowledge only, with no search access. For each numbered claim, respond ONLY with JSON: {"verdicts": [{"index": 1, "verdict": "true"|"false"|"unverified", "confidence": 0-100, "explanation": "one or two plain sentences"}]}. Mark a claim "unverified" whenever you are not confident, it depends on recent events, or it\'s the kind of specific figure you could easily misremember — do not guess just to sound authoritative.';
+    ? 'You are a careful fact-checker. For each numbered claim, use the search evidence given under it to decide a verdict. Respond ONLY with JSON: {"verdicts": [{"index": 1, "verdict": "true"|"false"|"unverified", "confidence": 0-100, "explanation": "one or two plain sentences", "sourceIndexes": [0,1]}]}. Use "unverified" when the evidence is thin, mixed, or doesn\'t clearly settle it. Never guess. sourceIndexes refers to the bracketed evidence numbers you actually relied on for that claim.'
+    : 'You are a careful fact-checker working from general knowledge only, with no search access. For each numbered claim, respond ONLY with JSON: {"verdicts": [{"index": 1, "verdict": "true"|"false"|"unverified", "confidence": 0-100, "explanation": "one or two plain sentences"}]}. Mark a claim "unverified" whenever you are not confident, it depends on recent events, or it\'s the kind of specific figure you could easily misremember. Do not guess just to sound authoritative.';
 
   const content = await callOpenRouter([
     { role: "system", content: systemPrompt },
